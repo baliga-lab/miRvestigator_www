@@ -23,18 +23,19 @@
 #   http://www.gnu.org/copyleft/lesser.html                     #
 #################################################################
 
+from ConfigParser import ConfigParser
 import Pyro.core
 import datetime
 import time
 import uuid
 import traceback
+import os
 from Queue import Full
 
 from mirv_db import create_job_in_db, update_job_status, get_species_by_mirbase_id, get_unfinished_jobs
 from multiprocessing import Process, Queue, cpu_count
 import mirv_worker
 import admin_emailer
-import conf
 
 
 
@@ -200,9 +201,11 @@ if __name__ == '__main__':
     uri = daemon.connect(test_server, 'miR_server')
 
     print uri
-    uriOut = open(conf.tmp_dir+'/uri','w')
-    uriOut.write(str(uri))
-    uriOut.close()
+    config = ConfigParser()
+    config.read(os.environ['MIRV_INI'])
+    #uriOut = open(conf.tmp_dir+'/uri','w')
+    with open(os.path.join(config.get('General', 'tmp_dir'), 'uri'),'w') as uriOut:
+        uriOut.write(str(uri))
 
     daemon.requestLoop()
 

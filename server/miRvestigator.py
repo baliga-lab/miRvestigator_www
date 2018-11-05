@@ -26,7 +26,6 @@
 from copy import deepcopy
 from sys import stdout
 import os, cPickle
-import conf
 
 
 # A class designed to compute and hold the information from analyzing

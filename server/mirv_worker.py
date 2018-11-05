@@ -33,12 +33,12 @@ import cPickle
 from miRvestigator import miRvestigator
 from pssm import pssm
 from mirv_db import update_job_status, set_genes_annotated, store_motif, store_mirvestigator_scores, get_species_by_mirbase_id, map_genes_to_entrez_ids
-import conf
 
 # Libraries for plotting
-import numpy, corebio                     # http://numpy.scipy.org and http://code.google.com/p/corebio/
+import numpy
 from numpy import array, float64, log10   # http://numpy.scipy.org
-from weblogolib import *                  # http://code.google.com/p/weblogo/
+from weblogolib import *
+import corebio  # contained in weblogo
 
 # Plot a PSSM using weblogo
 def plotPssm(pssm, fileName):
