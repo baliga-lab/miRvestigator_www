@@ -36,7 +36,7 @@ import mirv_csv
 from Pyro.errors import ProtocolError
 from mirv_db import get_job_status, read_parameters, read_motifs, read_mirvestigator_scores, get_gene_mapping, check_entrez_genes, check_genes
 import admin_emailer
-import conf
+from ConfigParser import ConfigParser
 
 
 # Libraries for plotting
@@ -139,6 +139,10 @@ def alignSeed(alignment, seed, motif):
 
 
 
+def __get_config(req):
+    config = ConfigParser()
+    config.read(req.get_options()['MIRV_INI'])
+    return config
 
 
 # stuff parameters into a dictionary and pop those onto a queue
@@ -185,10 +189,14 @@ def submitJob(req):
       return
 
     try:
+        config = __get_config(req)
         # connect to miR server via Pyro
-        uriFile = open(conf.tmp_dir+'/uri','r')
-        uri = uriFile.readline().strip()
-        uriFile.close()
+        with open(os.path.join(config.get('General', 'tmp_dir'), 'uri')) as uriFile:
+          uri = uriFile.readline().strip()
+
+        #uriFile = open(conf.tmp_dir+'/uri','r')
+        #uri = uriFile.readline().strip()
+        #uriFile.close()
         miR_server = Pyro.core.getProxyForURI(uri)
         Pyro.core.initClient()
 
