@@ -47,9 +47,8 @@ def plotPssm(pssm, fileName):
     options = LogoOptions()
     options.color_scheme = colorscheme.nucleotide
     format = LogoFormat(data, options)
-    fout = open(fileName, 'w')
-    png_formatter(data, format, fout)
-    fout.close()
+    with open(fileName, 'w') as fout:
+      fout.write(png_formatter(data, format))
 
 # Reverse complement
 def reverseMe(seq):
@@ -71,7 +70,7 @@ def reverseComplement(seq):
 
 # ViennaRNA RNAduplex to get minimum free energy (MFE) for
 # putative target sites.
-def rnaDuplex(motif,matches):
+def rnaDuplex(config, motif, matches):
     # Make a file to pipe in the motif consensus a new line then a match
     duplexMe = []
     for match in matches:
@@ -79,8 +78,8 @@ def rnaDuplex(motif,matches):
         duplexMe.append(match.strip().lstrip('[').rstrip(']'))
     
     # Run RNAduplex
-    errOut = open(conf.tmp_dir + '/rnaDuplex.stderr.out','w')
-    rnaDuplexProc = Popen("RNAduplex", shell=True,stdin=PIPE,stdout=PIPE,stderr=errOut)
+    errOut = open(os.path.join(config.get('General', 'tmp_dir'), 'rnaDuplex.stderr.out'), 'w')
+    rnaDuplexProc = Popen("RNAduplex", shell=True, stdin=PIPE, stdout=PIPE, stderr=errOut)
     output = rnaDuplexProc.communicate('\n'.join(duplexMe))[0]
     # Read results and parse out MFE
     mfe = []
@@ -96,9 +95,10 @@ def rnaDuplex(motif,matches):
 # folder in /local/FreqFiles. Then I made symbolic links in my PATH so that
 # weeder could be run from the command line as weederlauncher. You will also
 # have to add weederTFBS.out and adviser.out to the PATH in order to run.
-def weeder(seqFile=None, percTargets=50, revComp=False, bgModel='HS'):
-    if not os.path.exists(conf.tmp_dir+'/weeder'):
-        os.makedirs(conf.tmp_dir+'/weeder')
+def weeder(config, seqFile=None, percTargets=50, revComp=False, bgModel='HS'):
+    weeder_dir = os.path.join(config.get('General', 'tmp_dir'), 'weeder')
+    if not os.path.exists(weeder_dir):
+        os.makedirs(weeder_dir)
 
     # Note that we use a slightly hacked version of weeder. Weederlauncher has
     # hard-coded paths to the other executables, and weederlauncher and 
@@ -109,32 +109,10 @@ def weeder(seqFile=None, percTargets=50, revComp=False, bgModel='HS'):
     weederArgs = ' '+str(seqFile)+' '+str(bgModel)+' small T50'
     if revComp==True:
         weederArgs += ' -S'
-    errOut = open(conf.tmp_dir+'/weeder/stderr.out','w')
-    weederProc = Popen("weederlauncher " + weederArgs, shell=True,stdout=PIPE,stderr=errOut)
+    errOut = open(os.path.join(weeder_dir, 'stderr.out'), 'w')
+    weederProc = Popen("weederlauncher " + weederArgs, shell=True, stdout=PIPE, stderr=errOut)
     output = weederProc.communicate()
     
-    """# First run weederTFBS for 6bp motifs
-    weederArgs = '-f '+str(seqFile)+' -W 6 -e 1 -O HS -R '+str(percTargets)
-    if revComp==True:
-        weederArgs += ' -S'
-    errOut = open(conf.tmp_dir+'/weeder/stderr.out','w')
-    weederProc = Popen("weeder " + weederArgs, shell=True,stdout=PIPE,stderr=errOut)
-    output = weederProc.communicate()
-    
-    # Second run weederTFBS for 8bp motifs
-    weederArgs = '-f '+str(seqFile)+' -W 8 -e 2 -O HS -R '+str(percTargets)
-    if revComp==True:
-        weederArgs += ' -S'
-    weederProc = Popen("weeder " + weederArgs, shell=True,stdout=PIPE,stderr=errOut)
-    output = weederProc.communicate()
-    
-    # Finally run adviser
-    weederArgs = str(seqFile)
-    weederProc = Popen("adviser " + weederArgs, shell=True,stdout=PIPE,stderr=errOut)
-    output = weederProc.communicate()
-    errOut.close()
-    """
-
     # Now parse output from weeder
     PSSMs = []
     output = open(str(seqFile)+'.wee','r')
@@ -194,7 +172,12 @@ def weeder(seqFile=None, percTargets=50, revComp=False, bgModel='HS'):
         matches = []
         while line.find('Frequency Matrix') == -1:
             splitUp = [i for i in line.strip().split(' ') if i]
-            instances.append({'gene':seqDict[splitUp[0]], 'strand':splitUp[1], 'site':splitUp[2], 'start':splitUp[3], 'match':splitUp[4].lstrip('(').rstrip(')'), 'mfe':rnaDuplex(name,[splitUp[2]])[0] })
+            instances.append({'gene':seqDict[splitUp[0]],
+                              'strand':splitUp[1],
+                              'site':splitUp[2],
+                              'start':splitUp[3],
+                              'match':splitUp[4].lstrip('(').rstrip(')'),
+                              'mfe':rnaDuplex(config, name,[splitUp[2]])[0] })
             line = outLines.pop(0)
         # Read in Frequency Matrix
         outLines.pop(0)
@@ -212,14 +195,15 @@ def weeder(seqFile=None, percTargets=50, revComp=False, bgModel='HS'):
     return PSSMs
 
 
-def run(job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, mirbase_species, bgModel, topRet=10, viral=False):
+def run(config, job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, mirbase_species, bgModel, topRet=10, viral=False):
 
     species = get_species_by_mirbase_id(mirbase_species)
     if bgModel=='3p':
         bgModel = species['weeder']
     else:
         bgModel = species['weeder'].rstrip('3P')
-    sequence_file = conf.data_dir+"/p3utrSeqs_" + species['ucsc_name'] + ".csv"
+    sequence_file = os.path.join(config.get('General', 'data_dir'),
+                                 "p3utrSeqs_" + species['ucsc_name'] + ".csv")
 
     cut = float(cut)
     curRunNum = randint(0,1000000)
@@ -236,8 +220,6 @@ def run(job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, m
     sequences = [i.strip().split(',')[1] for i in seqLines]
     seqs = dict(zip(ids,sequences))
     seqFile.close()
-
-    #update_job_status(job, "finished reading sequence file")
 
     # 2. Get sequences for each target
     miRSeqs = {}
@@ -256,34 +238,41 @@ def run(job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, m
     set_genes_annotated(job_uuid, miRSeqs)
 
     # 3. Make a FASTA file
-    if not os.path.exists(conf.tmp_dir+'/fasta'):
-        os.makedirs(conf.tmp_dir+'/fasta')
-    fastaFile = open(conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta','w')
-    for seq in miRSeqs:
-        fastaFile.write('>'+str(seq)+'\n'+str(miRSeqs[seq])+'\n')
-    fastaFile.close()
+    fasta_dir = os.path.join(config.get('General', 'tmp_dir'), 'fasta')
+    if not os.path.exists(fasta_dir):
+        os.makedirs(fasta_dir)
+    fasta_fname = os.path.join(fasta_dir, 'tmp' + str(curRunNum) + '.fasta')
+    with open(fasta_fname, 'w') as fastaFile:
+        for seq in miRSeqs:
+            fastaFile.write('>'+str(seq)+'\n'+str(miRSeqs[seq])+'\n')
 
     # 4. Run weeder
     print 'Running weeder!'
     update_job_status(job_uuid, "running weeder")
-    weederPSSMs1 = weeder(seqFile=conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta', percTargets=50, revComp=False, bgModel=bgModel)
+    weederPSSMs1 = weeder(config,
+                          seqFile=fasta_fname,
+                          percTargets=50,
+                          revComp=False,
+                          bgModel=bgModel)
 
     # 4a. Take only selected size motifs
     weederPSSMsTmp = []
     for pssm1 in weederPSSMs1:
+        png_path = os.path.join(config.get('General', 'pssm_images_dir'),
+                                str(job_uuid) + '_' + pssm1.getName() + '.png')
         if 6 in motifSizes and len(pssm1.getName())==6:
             weederPSSMsTmp.append(deepcopy(pssm1))
-            plotPssm(pssm1,conf.pssm_images_dir+'/'+str(job_uuid)+'_'+pssm1.getName()+'.png')
+            plotPssm(pssm1, png_path)
         if 8 in motifSizes and len(pssm1.getName())==8:
             weederPSSMsTmp.append(deepcopy(pssm1))
-            plotPssm(pssm1,conf.pssm_images_dir+'/'+str(job_uuid)+'_'+pssm1.getName()+'.png')
+            plotPssm(pssm1, png_path)
         print("pssm name = " + pssm1.getName())
     weederPSSMs1 = deepcopy(weederPSSMsTmp)
     del weederPSSMsTmp
 
     # 5. Run miRvestigator HMM
     update_job_status(job_uuid, "computing miRvestigator HMM")
-    mV = miRvestigator(weederPSSMs1, seqs.values(),
+    mV = miRvestigator(config, weederPSSMs1, seqs.values(),
                        seedModel=seedModels,
                        minor=True,
                        p5=True, p3=True,
@@ -292,27 +281,11 @@ def run(job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, m
                        species=mirbase_species,
                        viral = viral)
 
-    # 6. Read in miRNAs to get mature miRNA ids
-    # import gzip
-    # miRNAFile = gzip.open('mature.fa.gz','r')
-    # miRNADict = {}
-    # while 1:
-    #     miRNALine = miRNAFile.readline()
-    #     seqLine = miRNAFile.readline()
-    #     if not miRNALine:
-    #         break
-    #     # Get the miRNA name
-    #     miRNAData = miRNALine.lstrip('>').split(' ')
-    #     curMiRNA = miRNAData[0]
-    #     if (curMiRNA.split('-'))[0]=='hsa':
-    #         miRNADict[curMiRNA] = miRNAData[1]
-    # miRNAFile.close()
-
     # 6. Clean-up after yerself
-    os.remove(conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta')
-    os.remove(conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta.wee')
-    os.remove(conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta.mix')
-    os.remove(conf.tmp_dir+'/fasta/tmp'+str(curRunNum)+'.fasta.html')
+    os.remove(os.path.join(fasta_dir, 'tmp' + str(curRunNum) + '.fasta'))
+    os.remove(os.path.join(fasta_dir, 'tmp' + str(curRunNum) + '.fasta.wee'))
+    os.remove(os.path.join(fasta_dir, 'tmp' + str(curRunNum) + '.fasta.mix'))
+    os.remove(os.path.join(fasta_dir, 'tmp' + str(curRunNum) + '.fasta.html'))
 
     # 7. write output to database
     update_job_status(job_uuid, "compiling results")
@@ -322,10 +295,6 @@ def run(job_uuid, genes, geneId, seedModels, wobble, cut, motifSizes, jobName, m
         scores = mV.getScoreList(pssm.getName())
         store_mirvestigator_scores(motif_id, scores)
 
-
     update_job_status(job_uuid, "done")
     return True
-
-
-
 

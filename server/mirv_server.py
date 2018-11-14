@@ -64,7 +64,7 @@ def delete_old_jobs(cutoff_datetime):
 
 
 # wait to take a job from the queue and do it
-def start_worker(id, q):
+def start_worker(id, q, config):
     print("worker %d started" % (id))
     while (True):
         job = q.get()
@@ -95,7 +95,7 @@ def start_worker(id, q):
 
         try:
             # run the job
-            r = mirv_worker.run(job['id'], genes, geneId, seedModels, wobble, cut, motifSizes, jobName, mirbase_species, bgModel, topRet, viral)
+            r = mirv_worker.run(config, job['id'], genes, geneId, seedModels, wobble, cut, motifSizes, jobName, mirbase_species, bgModel, topRet, viral)
 
             # notify on success
             if r:
@@ -175,8 +175,10 @@ class MiRvestigatorServer(Pyro.core.ObjBase):
 
 
 if __name__ == '__main__':
-    q = Queue(QUEUE_MAX_SIZE)
+    config = ConfigParser()
+    config.read(os.environ['MIRV_INI'])
 
+    q = Queue(QUEUE_MAX_SIZE)
     num_workers = 4
 
     try:
@@ -189,7 +191,7 @@ if __name__ == '__main__':
     # start worker child processes
     workers = []
     for i in range(num_workers):
-        p = Process(target=start_worker, args=(i,q,))
+        p = Process(target=start_worker, args=(i, q, config))
         p.start()
         workers.append(p)
 
@@ -201,8 +203,6 @@ if __name__ == '__main__':
     uri = daemon.connect(test_server, 'miR_server')
 
     print uri
-    config = ConfigParser()
-    config.read(os.environ['MIRV_INI'])
     #uriOut = open(conf.tmp_dir+'/uri','w')
     with open(os.path.join(config.get('General', 'tmp_dir'), 'uri'),'w') as uriOut:
         uriOut.write(str(uri))

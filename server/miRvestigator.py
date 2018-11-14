@@ -46,11 +46,14 @@ import os, cPickle
 #
 class miRvestigator:
     # Initialize and start the run
-    def __init__(self,pssms,seqs3pUTR,seedModel=[6,7,8], minor=True, p5=True, p3=True, textOut=True, wobble=True, wobbleCut=0.25, species='hsa',viral=False):
+    def __init__(self, config, pssms, seqs3pUTR, seedModel=[6,7,8],
+                 minor=True, p5=True, p3=True, textOut=True,
+                 wobble=True, wobbleCut=0.25, species='hsa',viral=False):
         print '\nmiRvestigator analysis started...'
         self.pssms = pssms
         self.species = species
         self.viral = viral
+        self.config = config
         if self.viral==True:
             print '\nIncluding viral miRNAs...'
         self.miRNAs = self.setMiRNAs(0,8,minor,p5,p3)
@@ -64,7 +67,8 @@ class miRvestigator:
         p3utrSeqs = 'X'.join(seqs3pUTR)
 
         # species-specific output directory
-        self.outdir = os.path.join(conf.tmp_dir, species, 'miRNA')
+        self.outdir = os.path.join(config.get('General', 'tmp_dir'),
+                                   species, 'miRNA')
         if not os.path.exists(self.outdir):
             os.makedirs(self.outdir)
         perm_6mers_pkl = os.path.join(self.outdir, 'permKMers_6mers.pkl')
@@ -375,25 +379,29 @@ class miRvestigator:
     
     # Get the miRNAs to compare against
     def setMiRNAs(self, seedStart, seedEnd, minor=True, p5=True, p3=True):
+        viral_species_filename = self.config.get('General',
+                                                 'viral_species_filename')
+        mirna_filename = self.config.get('General',
+                                         'mirna_filename')
         viralSpecies = []
-        if self.viral==True and not os.path.exists(conf.viral_species_filename):
+        if self.viral==True and not os.path.exists(viral_species_filename):
             from ftplib import FTP
             ftp1 = FTP('mirbase.org')
             ftp1.login()
             ftp1.cwd('/pub/mirbase/CURRENT/')
-            outFile = open(conf.viral_species_filename,'wb')
+            outFile = open(viral_species_filename,'wb')
             ftp1.retrbinary('RETR organism.txt',outFile.write)
             outFile.close()
             ftp1.quit()
         if self.viral==True:
-            inFile = open(conf.viral_species_filename,'r')
+            inFile = open(viral_species_filename,'r')
             for line in inFile.readlines():
                 splitUp = line.strip().split('\t')
                 if splitUp[1]=='VRL':
                     viralSpecies.append(splitUp[0])
             inFile.close()
         print 'Viral species are: '+str(viralSpecies)
-        if not os.path.exists(conf.mirna_filename):
+        if not os.path.exists(mirna_filename):
             print '\nDownloading miRNA seeds from miRBase.org...'
             # Grab down the latest miRNA data from mirbase.org:
             #  ftp://mirbase.org/pub/mirbase/CURRENT/mature.fa.gz
@@ -404,7 +412,7 @@ class miRvestigator:
             
             # Get the miRBase.org version number for reference.
             self.miRNAver = (ftp1.pwd().split('/'))[-1]
-            outFile = open(conf.mirna_filename,'wb')
+            outFile = open(mirna_filename,'wb')
             ftp1.retrbinary('RETR mature.fa.gz',outFile.write)
             outFile.close()
             ftp1.quit()
@@ -415,7 +423,7 @@ class miRvestigator:
         # Read in miRNAs: miRNAs are labeled by the <species>-* names and grabbing 2-8bp
         ### Could merge these as they come in so that don't do redundant, and also so that the labels are together
         import gzip
-        miRNAFile = gzip.open(conf.mirna_filename,'r')
+        miRNAFile = gzip.open(mirna_filename,'r')
         miRNAs = {}
         while 1:
             miRNALine = miRNAFile.readline()
