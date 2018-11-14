@@ -194,9 +194,6 @@ def submitJob(req):
         with open(os.path.join(config.get('General', 'tmp_dir'), 'uri')) as uriFile:
           uri = uriFile.readline().strip()
 
-        #uriFile = open(conf.tmp_dir+'/uri','r')
-        #uri = uriFile.readline().strip()
-        #uriFile.close()
         miR_server = Pyro.core.getProxyForURI(uri)
         Pyro.core.initClient()
 
@@ -267,6 +264,7 @@ def results(req):
     # need mV
     # miRNADict[j.strip()] ??
     # functions: conv2rna, reverseComplement
+    config = __get_config(req)
     id = str(req.form.getfirst('id',''))
     motifs = read_motifs(id)
     parameters = read_parameters(id)
@@ -287,29 +285,30 @@ def results(req):
 
     # read mirbase miRNAs so we can link back to mirbase
     viralSpecies = []
-    if viral==True:
-        inFile = open(conf.viral_species_filename,'r')
-        for line in inFile.readlines():
-            splitUp = line.strip().split('\t')
-            if splitUp[1]=='VRL':
-                viralSpecies.append(splitUp[0])
-        inFile.close()
+    if viral:
+        viral_species_filename = config.get('General', 'viral_species_filename')
+        with open(viral_species_filename,'r') as inFile:
+            for line in inFile.readlines():
+                splitUp = line.strip().split('\t')
+                if splitUp[1]=='VRL':
+                    viralSpecies.append(splitUp[0])
+
     import gzip
-    miRNAFile = gzip.open(conf.mirna_filename,'r')
-    miRNADict = {}
-    while 1:
-        miRNALine = miRNAFile.readline()
-        seqLine = miRNAFile.readline()
-        if not miRNALine:
-            break
-        # Get the miRNA name
-        miRNAData = miRNALine.lstrip('>').split(' ')
-        curMiRNA = miRNAData[0]
-        if (curMiRNA.split('-'))[0]==mirbase_species:
-            miRNADict[curMiRNA] = miRNAData[1]
-        if viral==True and ((curMiRNA.split('-'))[0] in viralSpecies):
-            miRNADict[curMiRNA] = miRNAData[1]
-    miRNAFile.close()
+    mirna_filename = config.get('General', 'mirna_filename')
+    with gzip.open(mirna_filename,'r') as miRNAFile:
+        miRNADict = {}
+        while 1:
+            miRNALine = miRNAFile.readline()
+            seqLine = miRNAFile.readline()
+            if not miRNALine:
+                break
+            # Get the miRNA name
+            miRNAData = miRNALine.lstrip('>').split(' ')
+            curMiRNA = miRNAData[0]
+            if (curMiRNA.split('-'))[0]==mirbase_species:
+                miRNADict[curMiRNA] = miRNAData[1]
+            if viral==True and ((curMiRNA.split('-'))[0] in viralSpecies):
+                miRNADict[curMiRNA] = miRNAData[1]
 
     s = '<html>\n'
     s += '<head>'
@@ -415,6 +414,7 @@ center><b><font color=\'#ffffff\'>Top miRNA</font></b></center></td><td bgcolor=
 33\'><center><b><font color=\'#ffffff\'>Complementarity</br>P-Value</font></b></center></td><td bgcolor=\'#333333\'><center><b><font color=\'#ffffff\'>% of Input</br>Sequences with Site</font>\
 </b></center></td></tr>\n'
 
+    pssm_images_dir = config.get('General', 'pssm_images_dir')
     for motif in motifs:
         scoreList = read_mirvestigator_scores(motif['motif_id'])
         if topRet=='all':
@@ -432,8 +432,9 @@ center><b><font color=\'#ffffff\'>Top miRNA</font></b></center></td><td bgcolor=
         top_score_i = 0
         i = scoreList[top_score_i]
         align1 = alignSeed(i['statePath'], i['miRNA.seed'], motif['name'])
-        if not os.path.exists(conf.pssm_images_dir+'/'+id+'_'+motif['name']+'.png'):
-            plotPssmMatrix(motif['matrix'],conf.pssm_images_dir+'/'+id+'_'+motif['name']+'.png')
+        png_path = os.path.join(pssm_images_dir, '%s_%s.png' % (id, motif['name']))
+        if not os.path.exists(png_path):
+            plotPssmMatrix(motif['matrix'], png_path)
 
         s += '<tr>'
         s += '<td bgcolor=\'#ffffff\' rowspan="' + str(row_count) + '"><center><a href=\'#'+motif['name']+'_miRNAs\'><img src=\'/images\
@@ -489,9 +490,6 @@ center><b><font color=\'#ffffff\'>Top miRNA</font></b></center></td><td bgcolor=
 
     s += '</table></p>\n'
 
-
-    #s += '</td></tr>\n'
-    #s += '</table>\n'
     for motif in motifs:
         s += '<p  id=\''+motif['name']+'_miRNAs\'><table width=\'100%\'cellpadding=\'15%\'>\n<tr>\n<td align=\'center\' valign=\'center\' bgcolor=\'#000000\'>\n<font size=4><b><font color=\'#cccc00\'>'
         if not topRet=='all':
